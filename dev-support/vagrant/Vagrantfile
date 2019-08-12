@@ -45,7 +45,7 @@ common_test_vm_settings = Proc.new do |testvm|
   testvm.vm.provision :shell, privileged: false, name: 'Run Ratis Servers', inline: <<-EOH
     pkill -u vagrant -f ratis || true
     # divide 95% of the VM memory in to thirds for the servers
-    export JAVA_OPTS="-Xmx #{(test_vm_memory.to_i * 0.95) / 3}"
+    export JAVA_OPTS="-Xmx#{((test_vm_memory.to_i * 0.95) / 3).round}m"
     # screen wants a tty; use screen(1) for that
     script -c "screen -c #{SCREEN_RC_PATH}/ratis_$(hostname)_screenrc" /dev/stdout
   EOH

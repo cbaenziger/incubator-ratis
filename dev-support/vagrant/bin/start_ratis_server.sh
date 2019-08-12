@@ -21,6 +21,14 @@ HOME=/home/vagrant
 storage=$1
 id=$2
 peers=$3
+jmx_port=$4
+
+if [[ -n "$jmx_port" ]]; then
+  jmx_opts="-Dcom.sun.management.jmxremote.port=$jmx_port \
+            -Dcom.sun.management.jmxremote.ssl=false \
+            -Dcom.sun.management.jmxremote.authenticate=false"
+  export JAVA_OPTS="$JAVA_OPTS $jmx_opts"
+fi
 
 cd ${HOME}/incubator-ratis/
 ./ratis-examples/src/main/bin/server.sh filestore server --storage $storage --id $id --peers $peers 2>&1 | \

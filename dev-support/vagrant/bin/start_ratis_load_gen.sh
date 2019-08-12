@@ -18,6 +18,14 @@
 
 HOME=/home/vagrant
 peers=$1
+jmx_port=$2
+
+if [[ -n "$jmx_port" ]]; then
+  jmx_opts="-Dcom.sun.management.jmxremote.port=$jmx_port \
+            -Dcom.sun.management.jmxremote.ssl=false \
+            -Dcom.sun.management.jmxremote.authenticate=false"
+  export JAVA_OPTS="$JAVA_OPTS $jmx_opts"
+fi
 
 cd ${HOME}/incubator-ratis
 
