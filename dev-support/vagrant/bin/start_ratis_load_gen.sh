@@ -18,10 +18,15 @@
 
 HOME=/home/vagrant
 peers=$1
+jmx_port=$2
+jmx_opts="-Dcom.sun.management.jmxremote.port=$jmx_port \
+          -Dcom.sun.management.jmxremote.ssl=false \
+          -Dcom.sun.management.jmxremote.authenticate=false"
 
 cd ${HOME}/incubator-ratis
 
 export QUORUM_OPTS="--peers $peers"
+export JAVA_OPTS="$JAVA_OPTS $jmx_opts"
 # run the load generator
 ./ratis-examples/src/main/bin/client.sh filestore loadgen --size 1048576 --numFiles 100 2>&1 | \
   tee ${HOME}/loadgen.log
