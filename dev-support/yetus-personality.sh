@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# load URLs, checksums of dependencies
+# all dependency env. vars. start with ratis_ include them all via --build-arg
+
 personality_plugins "all"
 
 ## @description  Globals specific to this personality
@@ -31,6 +34,16 @@ function personality_globals
   GITHUB_REPO="apache/incubator-ratis"
 }
 
+function ratis_docker_support
+{
+  export DOCKER_EXTRABUILDARGS+=( $(source dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
+##  export DOCKER_EXTRAENVS+=( $(source dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="}; /^ratis_.*/{printf $1 " "}') )
+##  yetus_debug "Using DOCKER_EXTRAENVS: ${DOCKER_EXTRAENVS[*]}"
+##  for i in ${DOCKER_EXTRAENVS[*]}; do
+##    add_docker_env $i
+##  done
+  yetus_debug "Using DOCKER_EXTRABUILDARGS: ${DOCKER_EXTRABUILDARGS[*]}"
+}
 
 ## @description  Queue up modules for this personality
 ## @audience     private
