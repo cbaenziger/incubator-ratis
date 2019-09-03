@@ -89,7 +89,7 @@ Vagrant.configure('2') do |config|
 
       # install Maven
       mkdir -p /usr/local
-      wget --continue http://apache.mirrors.ionfish.org/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
+      wget --continue https://archive.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
       tar -xzf apache-maven-3.6.0-bin.tar.gz -C /usr/local
       [ -L /usr/local/bin/mvn ] || ln -s /usr/local/apache-maven-3.6.0/bin/mvn /usr/local/bin/mvn
 
