@@ -113,6 +113,19 @@ Vagrant.configure('2') do |config|
       ./build
     EOH
 
+    # download and build JMXToolkit
+    ratisbuild.vm.provision :shell, privileged: false, name: 'Build JMXToolkit', inline: <<-EOH
+      set -e
+      cd ~/
+      # load proxies or other environment specifics loaded via a Vagrantfile.local
+      # or otherwise into /etc/environment
+      . /etc/environment
+      [ '!' -d jmxtoolkit ] && git clone https://github.com/larsgeorge/jmxtoolkit
+      cd jmxtoolkit
+      export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
+      mvn package -DskipTests
+    EOH
+
     # link in and build Ratis
     config.vm.synced_folder '../..', RATIS_PATH
 
