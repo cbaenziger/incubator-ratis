@@ -68,3 +68,25 @@ You also need to include *one* of the transports:
 
 Please note that Apache Hadoop dependencies are shaded, so it's safe to use hadoop transport with different versions of Hadoop.
 
+### Example Cluster
+
+### Monitoring
+
+The metrics [provided](https://issues.apache.org/jira/browse/RATIS-651) for operators looking to understand the behavior of their clusters can be seen via the Hadoop [metrics2 API](https://hadoop.apache.org/docs/current/api/org/apache/hadoop/metrics2/package-summary.html) and thus JMX as well.
+
+## Showing when followers last heart-beat (in nanoseconds):
+
+`object -> ratis_core:name=ratis_core.heartbeat.n1@group-6F7570313233.follower_n0_last_heartbeat_elapsed_time`
+If a follower node is down, this metric will monotonically increase for a follower. A useful measure may be an alarm if it is over a concerning value.
+
+## Showing when an election is in progress:
+
+When an election is in progress, one will see the following metrics increasing from those nodes participating:
+`object -> ratis_core:name=ratis_core.leader_election.n2@group-6F7570313233.leader_election_timeout_count`
+Here the timeout count will increment for every failed (timed out) election.
+
+## Showing how stable the last leader was:
+
+If one has a flapping cluster, it can be instructive to watch how long this leader has been the leader via:
+`ratis_core:name=ratis_core.leader_election.n2@group-6F7570313233.last_leader_elapsed_time`
+
