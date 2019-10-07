@@ -41,6 +41,7 @@ YETUS_ARGS+=("--resetrepo")
 YETUS_ARGS+=("--sentinel")
 YETUS_ARGS+=("--shelldocs=/testptch/hadoop/dev-support/bin/shelldocs")
 YETUS_ARGS+=("--tests-filter=cc,checkstyle,javac,javadoc,pylint,shellcheck,shelldocs,whitespace")
+YETUS_ARGS+=("--debug")
 
 TESTPATCHBIN=${YETUSDIR}/bin/test-patch
 

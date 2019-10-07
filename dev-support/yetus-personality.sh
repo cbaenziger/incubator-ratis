@@ -31,7 +31,6 @@ function personality_globals
   GITHUB_REPO="apache/incubator-ratis"
 }
 
-
 ## @description  Queue up modules for this personality
 ## @audience     private
 ## @stability    evolving
