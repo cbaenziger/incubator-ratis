@@ -29,6 +29,10 @@ function personality_globals
   JIRA_ISSUE_RE='^RATIS-[0-9]+$'
   #shellcheck disable=SC2034
   GITHUB_REPO="apache/incubator-ratis"
+  # load URLs, checksums of dependencies
+  # all dependency env. vars. start with ratis_ include them all via --build-arg
+  DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
+  yetus_debug "Using DOCKER_EXTRAARGS: ${DOCKER_EXTRAARGS[*]}"
 }
 
 ## @description  Queue up modules for this personality
