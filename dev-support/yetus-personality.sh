@@ -32,6 +32,7 @@ function personality_globals
   # load URLs, checksums of dependencies
   # all dependency env. vars. start with ratis_ include them all via --build-arg
   DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
+  DOCKER_EXTRAENVS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="};/^ratis_.*/{printf "--build-arg " $1 " "}') )
   yetus_debug "Using DOCKER_EXTRAARGS: ${DOCKER_EXTRAARGS[*]}"
 }
 
