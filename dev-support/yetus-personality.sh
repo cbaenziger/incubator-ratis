@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# load URLs, checksums of dependencies
+# all dependency env. vars. start with ratis_ include them all via --build-arg
+export DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
+export DOCKER_EXTRAENVS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="};/^ratis_.*/{printf "--build-arg " $1 " "}') )
+
 personality_plugins "all"
 
 ## @description  Globals specific to this personality
@@ -29,10 +34,6 @@ function personality_globals
   JIRA_ISSUE_RE='^RATIS-[0-9]+$'
   #shellcheck disable=SC2034
   GITHUB_REPO="apache/incubator-ratis"
-  # load URLs, checksums of dependencies
-  # all dependency env. vars. start with ratis_ include them all via --build-arg
-  DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
-  DOCKER_EXTRAENVS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="};/^ratis_.*/{printf "--build-arg " $1 " "}') )
   yetus_debug "Using DOCKER_EXTRAARGS: ${DOCKER_EXTRAARGS[*]}"
 }
 
