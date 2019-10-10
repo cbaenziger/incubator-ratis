@@ -16,8 +16,6 @@
 
 # load URLs, checksums of dependencies
 # all dependency env. vars. start with ratis_ include them all via --build-arg
-export DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg " $1 " "}') )
-export DOCKER_EXTRAENVS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="};/^ratis_.*/{printf "--build-arg " $1 " "}') )
 
 personality_plugins "all"
 
@@ -35,6 +33,12 @@ function personality_globals
   #shellcheck disable=SC2034
   GITHUB_REPO="apache/incubator-ratis"
   yetus_debug "Using DOCKER_EXTRAARGS: ${DOCKER_EXTRAARGS[*]}"
+}
+
+function ratis_docker_support
+{
+export DOCKER_EXTRAARGS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg \"" $1 "\" "}') )
+#export DOCKER_EXTRAENVS+=( $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="};/^ratis_.*/{printf "--build-arg " $1 " "}') )
 }
 
 ## @description  Queue up modules for this personality
