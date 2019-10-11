@@ -32,7 +32,8 @@ mkdir -p "${ARTIFACTS}" "${YETUSDIR}" "${TOOLS}"
 cp $BASEDIR/dev-support/yetus-personality.sh $WORKSPACE/
 cp $BASEDIR/dev-support/docker/Dockerfile $WORKSPACE/
 
-YETUS_VERSION=${YETUS_VERSION:-0.11.0}
-echo "Downloading Yetus"
-curl -L https://archive.apache.org/dist/yetus/${YETUS_VERSION}/apache-yetus-${YETUS_VERSION}-bin.tar.gz -o yetus.tar.gz
-gunzip -c yetus.tar.gz | tar xpf - -C "${YETUSDIR}" --strip-components 1
+##YETUS_VERSION=${YETUS_VERSION:-0.11.0}
+##echo "Downloading Yetus"
+##curl -L https://archive.apache.org/dist/yetus/${YETUS_VERSION}/apache-yetus-${YETUS_VERSION}-bin.tar.gz -o yetus.tar.gz
+##gunzip -c yetus.tar.gz | tar xpf - -C "${YETUSDIR}" --strip-components 1
+git clone https://github.com/cbaenziger/yetus "${YETUSDIR}"
