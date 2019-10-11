@@ -37,7 +37,7 @@ function personality_globals
 function ratis_docker_support
 {
   export DOCKER_EXTRAARGS+=( $(source dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf "--build-arg \"" $1 "\" "}') )
-##  export DOCKER_EXTRAENVS+=( $(source dev-support/binary_locations.sh && env|awk '/^ratis_.*/{printf $1}') )
+  export DOCKER_EXTRAENVS+=( $(source dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="}; /^ratis_.*/{printf $1 " "}') )
   yetus_debug "Using DOCKER_EXTRAARGS: ${DOCKER_EXTRAARGS[*]}"
 }
 
