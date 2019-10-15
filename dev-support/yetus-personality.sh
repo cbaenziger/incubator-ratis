@@ -36,7 +36,7 @@ function personality_globals
 
 function ratis_docker_support
 {
-  for kv in $(source sourcedir/dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="}; /^ratis_.*/{printf $1 "=" $2 " "}'); do
+  for kv in $(source dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="}; /^ratis_.*/{printf $1 "=" $2 " "}'); do
     add_docker_build_arg "${kv%=*}" "${kv#*=}"
   done
 ##  export DOCKER_EXTRAENVS+=( $(source dev-support/binary_locations.sh && env|awk 'BEGIN{FS="="}; /^ratis_.*/{printf $1 " "}') )
