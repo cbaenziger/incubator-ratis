@@ -36,3 +36,5 @@ cp $BASEDIR/dev-support/docker/Dockerfile $WORKSPACE/
 ##echo "Downloading Yetus"
 ##curl -L https://archive.apache.org/dist/yetus/${YETUS_VERSION}/apache-yetus-${YETUS_VERSION}-bin.tar.gz -o yetus.tar.gz
 gunzip -c /tmp/apache-yetus-0.12.0-SNAPSHOT-bin.tar.gz | tar xpf - -C "${YETUSDIR}" --strip-components 1
+
+source $BASEDIR/dev-support/binary_locations.sh
