@@ -63,7 +63,7 @@ public interface LogUtils {
   }
 
   static <OUTPUT, THROWABLE extends Throwable> OUTPUT supplyAndLog(
-      Logger log, CheckedSupplier<OUTPUT, THROWABLE> supplier, Supplier<String> name)
+      Logger log, CheckedSupplier<OUTPUT, THROWABLE> supplier, Supplier<?> name)
       throws THROWABLE {
     final OUTPUT output;
     try {

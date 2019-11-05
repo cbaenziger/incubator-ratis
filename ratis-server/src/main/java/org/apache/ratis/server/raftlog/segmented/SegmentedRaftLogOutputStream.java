@@ -32,10 +32,23 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.time.Duration;
 import java.util.zip.Checksum;
+
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.FailsafeException;
+import net.jodah.failsafe.RetryPolicy;
+import net.jodah.failsafe.function.CheckedRunnable;
 
 public class SegmentedRaftLogOutputStream implements Closeable {
   private static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogOutputStream.class);
+
+  private static final RetryPolicy<Object> retryObjectPolicy = new RetryPolicy<Object>()
+      .handle(IOException.class)
+      .onRetry(e -> LOG.warn("Retrying operation:", e.getLastFailure()))
+      .onFailure(e -> {LOG.error("Failed to operation:", e.getFailure()); throw(new IOException(e.getFailure()));})
+      .withDelay(Duration.ofNanos(1))
+      .withMaxAttempts(-1);
 
   private static final ByteBuffer fill;
   private static final int BUFFER_SIZE = 1024 * 1024; // 1 MB
@@ -65,24 +78,28 @@ public class SegmentedRaftLogOutputStream implements Closeable {
     this.preallocatedSize = preallocatedSize;
     RandomAccessFile rp = new RandomAccessFile(file, "rw");
     try {
-      fc = rp.getChannel();
-      fc.position(fc.size());
-      preallocatedPos = fc.size();
+      Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+        fc = rp.getChannel();
+        fc.position(fc.size());
+        preallocatedPos = fc.size();
 
-      out = new BufferedWriteChannel(fc, bufferSize);
-      if (!append) {
-        create();
-      }
-    } catch (IOException ioe) {
+        out = new BufferedWriteChannel(fc, bufferSize);
+        if (!append) {
+          create();
+        }
+      });
+    } catch (FailsafeException ioe) {
       LOG.warn("Hit IOException while creating log segment " + file
           + ", delete the partial file.");
       // hit IOException, clean up the in-progress log file
       try {
-        FileUtils.deleteFully(file);
-      } catch (IOException e) {
+        Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+          FileUtils.deleteFully(file);
+        });
+      } catch (FailsafeException e) {
         LOG.warn("Failed to delete the file " + file, e);
       }
-      throw ioe;
+      throw new IOException(ioe);
     }
   }
 
@@ -107,40 +124,47 @@ public class SegmentedRaftLogOutputStream implements Closeable {
 
     byte[] buf = new byte[bufferSize];
     CodedOutputStream cout = CodedOutputStream.newInstance(buf);
-    cout.writeUInt32NoTag(serialized);
-    entry.writeTo(cout);
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{cout.writeUInt32NoTag(serialized);});
+    ///XXX Nthis seems not idempotent!
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+      entry.writeTo(cout);
+    });
 
     checksum.reset();
     checksum.update(buf, 0, buf.length);
     final int sum = (int) checksum.getValue();
 
-    out.write(buf);
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{out.write(buf);});
     writeInt(sum);
   }
 
   private void writeInt(int v) throws IOException {
-    out.write((v >>> 24) & 0xFF);
-    out.write((v >>> 16) & 0xFF);
-    out.write((v >>>  8) & 0xFF);
-    out.write((v) & 0xFF);
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{out.write((v >>> 24) & 0xFF);});
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{out.write((v >>> 16) & 0xFF);});
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{out.write((v >>>  8) & 0xFF);});
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{out.write((v) & 0xFF);});
   }
 
   private void create() throws IOException {
-    fc.truncate(0);
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{fc.truncate(0);});
     fc.position(0);
     preallocatedPos = 0;
     preallocate(); // preallocate file
 
-    SegmentedRaftLogFormat.applyHeaderTo(CheckedConsumer.asCheckedFunction(out::write));
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+      SegmentedRaftLogFormat.applyHeaderTo(CheckedConsumer.asCheckedFunction(out::write));
+    });
     flush();
   }
 
   @Override
   public void close() throws IOException {
     try {
-      out.flush();
+      Failsafe.with(retryObjectPolicy).run((CheckedRunnable)(out::flush));
       if (fc != null && fc.isOpen()) {
-        fc.truncate(fc.position());
+        Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+          fc.truncate(fc.position());
+        });
       }
     } finally {
       IOUtils.cleanup(LOG, fc, out);
@@ -157,7 +181,7 @@ public class SegmentedRaftLogOutputStream implements Closeable {
     if (out == null) {
       throw new IOException("Trying to use aborted output stream");
     }
-    out.flush();
+    Failsafe.with(retryObjectPolicy).run((CheckedRunnable)(out::flush));
   }
 
   private void preallocate() throws IOException {
@@ -168,7 +192,9 @@ public class SegmentedRaftLogOutputStream implements Closeable {
       int size = (int) Math.min(BUFFER_SIZE, targetSize - allocated);
       ByteBuffer buffer = fill.slice();
       buffer.limit(size);
-      IOUtils.writeFully(fc, buffer, preallocatedPos);
+      Failsafe.with(retryObjectPolicy).run((CheckedRunnable)()->{
+        IOUtils.writeFully(fc, buffer, preallocatedPos);
+      });
       preallocatedPos += size;
       allocated += size;
     }

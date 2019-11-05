@@ -28,23 +28,36 @@ import org.apache.ratis.util.IOUtils;
 import org.apache.ratis.util.Preconditions;
 import org.apache.ratis.util.PureJavaCrc32C;
 import org.apache.ratis.util.StringUtils;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.RetryPolicy;
+import net.jodah.failsafe.function.CheckedSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.time.Duration;
 import java.util.zip.Checksum;
 
 import com.codahale.metrics.Timer;
 
 class SegmentedRaftLogReader implements Closeable {
   static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogReader.class);
+
+  private static final RetryPolicy<Integer> retryPolicy = new RetryPolicy<Integer>()
+	      .handle(IOException.class)
+	      .onRetry(e -> LOG.warn("Retrying read:", e.getLastFailure()))
+	      .onFailure(e -> LOG.error("Failed to read:", e.getFailure()))
+	      .withDelay(Duration.ofNanos(1))
+	      .withMaxAttempts(-1);
+
   /**
    * InputStream wrapper that keeps track of the current stream position.
    *
    * This stream also allows us to set a limit on how many bytes we can read
-   * without getting an exception.
+   * without getting an exception and retries exceptions to avoid blocking progress.
    */
   static class LimitedInputStream extends FilterInputStream {
+
     private long curPos = 0;
     private long markPos = -1;
     private long limitPos = Long.MAX_VALUE;
@@ -64,7 +77,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read() throws IOException {
       checkLimit(1);
-      int ret = super.read();
+      int ret = (Failsafe.with(retryPolicy).get((CheckedSupplier<Integer>)super::read));
       if (ret != -1) curPos++;
       return ret;
     }
@@ -72,7 +85,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read(byte[] data) throws IOException {
       checkLimit(data.length);
-      int ret = super.read(data);
+      int ret = (Failsafe.with(retryPolicy).get((CheckedSupplier<Integer>)()->{return(super.read(data));}));
       if (ret > 0) curPos += ret;
       return ret;
     }
@@ -80,7 +93,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read(byte[] data, int offset, int length) throws IOException {
       checkLimit(length);
-      int ret = super.read(data, offset, length);
+      int ret = (Failsafe.with(retryPolicy).get((CheckedSupplier<Integer>)()->{return(super.read(data, offset, length));}));
       if (ret > 0) curPos += ret;
       return ret;
     }

@@ -26,18 +26,31 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.RetryPolicy;
+import net.jodah.failsafe.function.CheckedRunnable;
 
 public interface FileUtils {
   Logger LOG = LoggerFactory.getLogger(FileUtils.class);
 
+  static final RetryPolicy<Void> retryPolicy = new RetryPolicy<Void>()
+      .handle(IOException.class)
+      .onRetry(e -> LOG.warn("Retrying write:", e.getLastFailure()))
+      .onFailure(e -> LOG.error("Failed to write:", e.getFailure()))
+      .withDelay(Duration.ofNanos(1))
+      .withMaxAttempts(-1);
+
   static void truncateFile(File f, long target) throws IOException {
-    final long original = f.length();
-    LogUtils.runAndLog(LOG,
-        () -> {
-          try (FileOutputStream out = new FileOutputStream(f, true)) {
-            out.getChannel().truncate(target);
-          }},
-        () -> "FileOutputStream.getChannel().truncate " + f + " length: " + original + " -> " + target);
+    Failsafe.with(retryPolicy).run((CheckedRunnable)()->{
+      final long original = f.length();
+      LogUtils.runAndLog(LOG,
+          () -> {
+            try (FileOutputStream out = new FileOutputStream(f, true)) {
+              out.getChannel().truncate(target);
+            }},
+          () -> "FileOutputStream.getChannel().truncate " + f + " length: " + original + " -> " + target);
+    });
   }
 
   static OutputStream createNewFile(Path p) throws IOException {
@@ -51,9 +64,11 @@ public interface FileUtils {
   }
 
   static void createDirectories(Path dir) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.createDirectories(dir),
-        () -> "Files.createDirectories " + dir);
+    Failsafe.with(retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.createDirectories(dir),
+          () -> "Files.createDirectories " + dir);
+    });
   }
 
   static void move(File src, File dst) throws IOException {
@@ -61,9 +76,11 @@ public interface FileUtils {
   }
 
   static void move(Path src, Path dst) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.move(src, dst),
-        () -> "Files.move " + src + " to " + dst);
+    Failsafe.with(retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.move(src, dst),
+          () -> "Files.move " + src + " to " + dst);
+    });
   }
 
 
@@ -78,9 +95,11 @@ public interface FileUtils {
    * This method may print log messages using {@link #LOG}.
    */
   static void delete(Path p) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.delete(p),
-        () -> "Files.delete " + p);
+    Failsafe.with(retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.delete(p),
+          () -> "Files.delete " + p);
+    });
   }
 
   /** The same as passing f.toPath() to {@link #deleteFully(Path)}. */
@@ -100,26 +119,28 @@ public interface FileUtils {
    * (3) If it is a symlink, the symlink will be deleted but the symlink target will not be deleted.
    */
   static void deleteFully(Path p) throws IOException {
-    if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
-      LOG.trace("deleteFully: {} does not exist.", p);
-      return;
-    }
-    Files.walkFileTree(p, new SimpleFileVisitor<Path>() {
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        delete(file);
-        return FileVisitResult.CONTINUE;
+    Failsafe.with(retryPolicy).run((CheckedRunnable)()->{
+      if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
+        LOG.trace("deleteFully: {} does not exist.", p);
+        return;
       }
-
-      @Override
-      public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
-        if (e != null) {
-          // directory iteration failed
-          throw e;
+      Files.walkFileTree(p, new SimpleFileVisitor<Path>() {
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+          delete(file);
+          return FileVisitResult.CONTINUE;
         }
-        delete(dir);
-        return FileVisitResult.CONTINUE;
-      }
+
+        @Override
+        public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+          if (e != null) {
+            // directory iteration failed
+            throw e;
+          }
+          delete(dir);
+          return FileVisitResult.CONTINUE;
+        }
+      });
     });
   }
 }
