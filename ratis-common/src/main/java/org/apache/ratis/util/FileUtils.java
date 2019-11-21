@@ -28,6 +28,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
 
 import org.apache.ratis.retry.IORetryPolicy;
 
@@ -143,5 +144,21 @@ public interface FileUtils {
         }
       });
     });
+  }
+  
+  /** The same as passing f.exists() to {@link #File(Path)} but with retry logic for flakey I/O */
+  static boolean exists(File f) {
+    LOG.trace("exists {}", f);
+    return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+      return (f.exists());
+    }));
+  }
+  
+  /** The same as passing f.length() to {@link #File(Path)} but with retry logic for flakey I/O */
+  static long length(File f) {
+    LOG.trace("length {}", f);
+    return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Long>)()->{
+      return (f.length());
+    }));
   }
 }

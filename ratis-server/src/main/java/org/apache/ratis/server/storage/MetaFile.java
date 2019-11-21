@@ -17,20 +17,18 @@
  */
 package org.apache.ratis.server.storage;
 
-import org.apache.ratis.statemachine.impl.SingleFileSnapshotInfo;
 import org.apache.ratis.util.AtomicFileOutputStream;
+import org.apache.ratis.util.FileUtils;
 import org.apache.ratis.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.function.CheckedRunnable;
-import net.jodah.failsafe.function.CheckedSupplier;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
-import java.util.Vector;
 
 import org.apache.ratis.retry.IORetryPolicy;
 
@@ -57,10 +55,8 @@ public class MetaFile {
     votedFor = EMPTY_VOTEFOR;
   }
 
-  boolean exists() {
-    return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
-      return this.file.exists();
-    }));
+  boolean exists() throws IOException {
+    return FileUtils.exists(file);
   }
 
   public long getTerm() throws IOException {
@@ -104,6 +100,8 @@ public class MetaFile {
    * @throws IOException if the file cannot be written
    */
   void writeFile(long term, String votedFor) throws IOException {
+    // retry the I/O operation if we fail but still use the AtomicFileOutputStream
+    // abort mechanism to clean-up
     Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
       AtomicFileOutputStream fos = new AtomicFileOutputStream(file);
       Properties properties = new Properties();
@@ -125,39 +123,30 @@ public class MetaFile {
   /*
    * Will set class fields @term and @votedFor if a successful read of @file
    * @throws @IOException if @file fails to read in @retryReadPolicy
-   * @throws @IllegalStateException if @file is malformed
    */
-  void readFile() throws IllegalStateException {
+  void readFile() throws IOException {
     term = DEFAULT_TERM;
     votedFor = EMPTY_VOTEFOR;
-    Vector<Object> result = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Vector<Object>>)()->{
-      Vector<Object> v = new Vector<Object>(2);
-      if (file.exists()) {
-        BufferedReader br = new BufferedReader(
-            new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
-        try {
-          Properties properties = new Properties();
+    if (FileUtils.exists(file)) {
+      BufferedReader br = new BufferedReader(
+          new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
+      try {
+        Properties properties = new Properties();
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
           properties.load(br);
-          if (properties.containsKey(TERM_KEY) &&
-              properties.containsKey(VOTEDFOR_KEY)) {
-            // terrible hack to return Vector<Object> v:[Term, VotedFor]
-            v.add(Long.parseLong((String) properties.get(TERM_KEY)));
-            v.add((String) properties.get(VOTEDFOR_KEY));
-          } else {
-            throw new IllegalStateException("Corrupted term/votedFor properties: "
-                + properties);
-          }
-        } finally {
-          IOUtils.cleanup(LOG, br);
+        });
+        if (properties.containsKey(TERM_KEY) &&
+            properties.containsKey(VOTEDFOR_KEY)) {
+          // terrible hack to return Vector<Object> v:[Term, VotedFor]
+          term = Long.parseLong((String)properties.get(TERM_KEY));
+          votedFor = (String) properties.get(VOTEDFOR_KEY);
+        } else {
+          throw new IllegalStateException("Corrupted term/votedFor properties: "
+              + properties);
         }
+      } finally {
+        IOUtils.cleanup(LOG, br);
       }
-      return(v);
-    });
-    if (result.size() == 2) {
-      term = (Long)result.get(0);
-      votedFor = (String)result.get(1);
-    } else {
-      throw new IllegalStateException("Corrupted term/votedFor vector");
     }
   }
 }

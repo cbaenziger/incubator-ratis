@@ -30,7 +30,6 @@ import org.apache.ratis.util.PureJavaCrc32C;
 import org.apache.ratis.util.StringUtils;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.FailsafeException;
-import net.jodah.failsafe.function.CheckedRunnable;
 import net.jodah.failsafe.function.CheckedSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -263,9 +262,9 @@ class SegmentedRaftLogReader implements Closeable {
           in.reset();
           // need a final index to read from the lambda
           final int idx_f = idx;
-          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{IOUtils.skipFully(in, idx_f);});
+          IOUtils.skipFully(in, idx_f);
           in.mark(temp.length + 1);
-          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{IOUtils.skipFully(in, 1);});
+          IOUtils.skipFully(in, 1);
         }
       }
     }
@@ -315,7 +314,7 @@ class SegmentedRaftLogReader implements Closeable {
     checkBufferSize(totalLength);
     in.reset();
     in.mark(maxOpSize);
-    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)->{IOUtils.readFully(in, temp, 0, totalLength);});
+    IOUtils.readFully(in, temp, 0, totalLength);
 
     // verify checksum
     checksum.reset();

@@ -41,7 +41,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.jodah.failsafe.Failsafe;
-import net.jodah.failsafe.function.CheckedRunnable;
 import net.jodah.failsafe.function.CheckedSupplier;
 
 import org.apache.ratis.retry.IORetryPolicy;
@@ -78,23 +77,25 @@ public class SimpleStateMachineStorage implements StateMachineStorage {
 
   @Override
   public void cleanupOldSnapshots(SnapshotRetentionPolicy snapshotRetentionPolicy) throws IOException {
-    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
-      if (snapshotRetentionPolicy != null && snapshotRetentionPolicy.getNumSnapshotsRetained() > 0) {
-
-        List<SingleFileSnapshotInfo> allSnapshotFiles = new ArrayList<>();
-        try (DirectoryStream<Path> stream =
-                 Files.newDirectoryStream(smDir.toPath())) {
-          for (Path path : stream) {
-            Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
-            if (matcher.matches()) {
-              final long endIndex = Long.parseLong(matcher.group(2));
-              final long term = Long.parseLong(matcher.group(1));
-              final FileInfo fileInfo = new FileInfo(path, null); //We don't need FileDigest here.
-              allSnapshotFiles.add(new SingleFileSnapshotInfo(fileInfo, term, endIndex));
+    if (snapshotRetentionPolicy != null && snapshotRetentionPolicy.getNumSnapshotsRetained() > 0) {
+      List<SingleFileSnapshotInfo> allSnapshotFiles = 
+        Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<List<SingleFileSnapshotInfo>>)()->{
+          List<SingleFileSnapshotInfo> result = new ArrayList<>();
+          try (DirectoryStream<Path> stream =
+                   Files.newDirectoryStream(smDir.toPath())) {
+            for (Path path : stream) {
+              Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
+              if (matcher.matches()) {
+                final long endIndex = Long.parseLong(matcher.group(2));
+                final long term = Long.parseLong(matcher.group(1));
+                final FileInfo fileInfo = new FileInfo(path, null); //We don't need FileDigest here.
+                result.add(new SingleFileSnapshotInfo(fileInfo, term, endIndex));
+              }
             }
           }
-        }
-
+          return(result);
+        });
+      
         if (allSnapshotFiles.size() > snapshotRetentionPolicy.getNumSnapshotsRetained()) {
           allSnapshotFiles.sort(new SnapshotFileComparator());
           List<File> snapshotFilesToBeCleaned = allSnapshotFiles.subList(
@@ -106,8 +107,7 @@ public class SimpleStateMachineStorage implements StateMachineStorage {
             FileUtils.deleteFileQuietly(snapshotFile);
           }
         }
-      }
-    });
+    }
   }
 
   public static TermIndex getTermIndexFromSnapshotFile(File file) {

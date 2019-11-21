@@ -37,7 +37,6 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.jodah.failsafe.Failsafe;
-import net.jodah.failsafe.RetryPolicy;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.jodah.failsafe.function.CheckedSupplier;
 
@@ -128,13 +127,11 @@ public class RaftStorageDirectory {
   }
 
   private static void clearDirectory(File dir) throws IOException {
-    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
-      if (dir.exists()) {
-        LOG.info(dir + " already exists.  Deleting it ...");
-        FileUtils.deleteFully(dir);
-      }
-      FileUtils.createDirectories(dir);
-    });
+    if (FileUtils.exists(dir)) {
+      LOG.info(dir + " already exists.  Deleting it ...");
+      FileUtils.deleteFully(dir);
+    }
+    FileUtils.createDirectories(dir);
   }
 
   /**
@@ -196,7 +193,8 @@ public class RaftStorageDirectory {
    * @return log segment files sorted based on their index.
    */
   public List<LogPathAndIndex> getLogSegmentFiles() throws IOException {
-    List<LogPathAndIndex> files = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<List<LogPathAndIndex>>)()->{
+    List<LogPathAndIndex> files = Failsafe.with(IORetryPolicy.retryPolicy)
+        .get((CheckedSupplier<List<LogPathAndIndex>>)()->{
       List<LogPathAndIndex> list = new ArrayList<>();
       try (DirectoryStream<Path> stream =
                Files.newDirectoryStream(getCurrentDir().toPath())) {
@@ -204,8 +202,8 @@ public class RaftStorageDirectory {
           for (Pattern pattern : Arrays.asList(CLOSED_SEGMENT_REGEX, OPEN_SEGMENT_REGEX)) {
             Matcher matcher = pattern.matcher(path.getFileName().toString());
             if (matcher.matches()) {
-              if (pattern == OPEN_SEGMENT_REGEX && Files.size(path) == 0L) {
-                Files.delete(path);
+              if (pattern == OPEN_SEGMENT_REGEX && FileUtils.length(path.toFile()) == 0L) {
+                FileUtils.delete(path);
                 LOG.info("Delete zero size file " + path);
                 break;
               }
@@ -228,12 +226,12 @@ public class RaftStorageDirectory {
    * Check to see if current/ directory is empty.
    */
   boolean isCurrentEmpty() throws IOException {
+    File currentDir = getCurrentDir();
+    if(!FileUtils.exists(currentDir)) {
+      // if current/ does not exist, it's safe to format it.
+      return true;
+    }
     return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
-      File currentDir = getCurrentDir();
-      if(!currentDir.exists()) {
-        // if current/ does not exist, it's safe to format it.
-        return true;
-      }
       try(DirectoryStream<Path> dirStream =
               newDirectoryStream(currentDir.toPath())) {
         if (dirStream.iterator().hasNext()) {
@@ -250,44 +248,46 @@ public class RaftStorageDirectory {
    * @return state {@link StorageState} of the storage directory
    */
   StorageState analyzeStorage(boolean toLock) throws IOException {
-    return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<StorageState>)()->{
-      Objects.requireNonNull(root, "root directory is null");
+    Objects.requireNonNull(root, "root directory is null");
 
-      String rootPath = root.getCanonicalPath();
-      try { // check that storage exists
-        if (!root.exists()) {
-          LOG.info("The storage directory " + rootPath + " does not exist. Creating ...");
-          FileUtils.createDirectories(root);
-        }
-        // or is inaccessible
-        if (!root.isDirectory()) {
-          LOG.warn(rootPath + " is not a directory");
-          return StorageState.NON_EXISTENT;
-        }
-        if (!Files.isWritable(root.toPath())) {
-          LOG.warn("The storage directory " + rootPath + " is not writable.");
-          return StorageState.NON_EXISTENT;
-        }
-      } catch(SecurityException ex) {
-        LOG.warn("Cannot access storage directory " + rootPath, ex);
+    String rootPath = root.getCanonicalPath();
+    try { // check that storage exists
+      if (!FileUtils.exists(root)) {
+        LOG.info("The storage directory " + rootPath + " does not exist. Creating ...");
+        FileUtils.createDirectories(root);
+      }
+      // or is inaccessible
+      boolean isDirectory = Failsafe.with(IORetryPolicy.retryPolicy)
+          .get((CheckedSupplier<Boolean>)()->{return(root.isDirectory());});
+      if (!isDirectory) {
+        LOG.warn(rootPath + " is not a directory");
         return StorageState.NON_EXISTENT;
       }
-
-      if (toLock) {
-        this.lock(); // lock storage if it exists
+      boolean isWriteable = Failsafe.with(IORetryPolicy.retryPolicy)
+          .get((CheckedSupplier<Boolean>)()->{return(Files.isWritable(root.toPath()));});
+      if (!isWriteable) {
+        LOG.warn("The storage directory " + rootPath + " is not writable.");
+        return StorageState.NON_EXISTENT;
       }
+    } catch(SecurityException ex) {
+      LOG.warn("Cannot access storage directory " + rootPath, ex);
+      return StorageState.NON_EXISTENT;
+    }
 
-      // check whether current directory is valid
-      if (hasMetaFile()) {
-        return StorageState.NORMAL;
-      } else {
-        return StorageState.NOT_FORMATTED;
-      }
-    }));
+    if (toLock) {
+      this.lock(); // lock storage if it exists
+    }
+
+    // check whether current directory is valid
+    if (hasMetaFile()) {
+      return StorageState.NORMAL;
+    } else {
+      return StorageState.NOT_FORMATTED;
+    }
   }
 
   public boolean hasMetaFile() {
-    return getMetaFile().exists();
+    return FileUtils.exists(getMetaFile());
   }
 
   /**
@@ -326,7 +326,7 @@ public class RaftStorageDirectory {
     return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<FileLock>)()->{
       final File lockF = new File(root, STORAGE_FILE_LOCK);
       boolean deletionHookAdded = false;
-      if (!lockF.exists()) {
+      if (!FileUtils.exists(lockF)) {
         lockF.deleteOnExit();
         deletionHookAdded = true;
       }
@@ -347,14 +347,16 @@ public class RaftStorageDirectory {
         LOG.error("It appears that another process "
             + "has already locked the storage directory: " + root, oe);
         file.close();
-        // XXX swallowing this exception; need to find something to raise up
-        throw new IOException("Failed to lock storage " + this.root + ". The directory is already locked", oe);
+        // XXX should find a better exception to bubble-up; IOException would just
+        // infinitely retry here
+        throw new IllegalStateException("Failed to lock storage " + this.root + ". The directory is already locked", oe);
       } catch(IOException e) {
         LOG.warn("Failed to acquire lock on " + lockF
             + ". If this storage directory is mounted via NFS, "
             + "ensure that the appropriate nfs lock services are running.", e);
-        file.close();
         throw e;
+      } finally {
+        file.close();
       }
       if (!deletionHookAdded) {
         // If the file existed prior to our startup, we didn't

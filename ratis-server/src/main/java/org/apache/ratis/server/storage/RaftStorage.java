@@ -23,6 +23,7 @@ import org.apache.ratis.server.impl.RaftConfiguration;
 import org.apache.ratis.server.impl.RaftServerConstants;
 import org.apache.ratis.server.impl.ServerProtoUtils;
 import org.apache.ratis.server.storage.RaftStorageDirectory.StorageState;
+import org.apache.ratis.util.FileUtils;
 import org.apache.ratis.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.nio.file.Files;
 
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.function.CheckedRunnable;
@@ -98,9 +98,7 @@ public class RaftStorage implements Closeable {
   }
 
   private void cleanMetaTmpFile() throws IOException {
-    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
-      Files.deleteIfExists(storageDir.getMetaTmpFile().toPath());
-    });
+    FileUtils.deleteFully(storageDir.getMetaTmpFile().toPath());
   }
 
   private StorageState analyzeAndRecoverStorage(boolean toLock)

@@ -86,10 +86,8 @@ public class SegmentedRaftLogOutputStream implements Closeable {
           + ", delete the partial file.");
       // hit IOException, clean up the in-progress log file
       try {
-        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
-          FileUtils.deleteFully(file);
-        });
-      } catch (FailsafeException e) {
+        FileUtils.deleteFully(file);
+      } catch (IOException e) {
         LOG.warn("Failed to delete the file " + file, e);
       }
       throw new IOException(ioe);
@@ -185,9 +183,7 @@ public class SegmentedRaftLogOutputStream implements Closeable {
       int size = (int) Math.min(BUFFER_SIZE, targetSize - allocated);
       ByteBuffer buffer = fill.slice();
       buffer.limit(size);
-      Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
-        IOUtils.writeFully(fc, buffer, preallocatedPos);
-      });
+      IOUtils.writeFully(fc, buffer, preallocatedPos);
       preallocatedPos += size;
       allocated += size;
     }

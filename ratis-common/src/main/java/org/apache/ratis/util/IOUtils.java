@@ -19,7 +19,13 @@ package org.apache.ratis.util;
 
 import org.apache.ratis.protocol.AlreadyClosedException;
 import org.apache.ratis.protocol.TimeoutIOException;
+import org.apache.ratis.retry.IORetryPolicy;
 import org.slf4j.Logger;
+
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.FailsafeException;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
@@ -97,7 +103,9 @@ public interface IOUtils {
   static void readFully(InputStream in, int buffSize) throws IOException {
     final byte buf[] = new byte[buffSize];
     for(int bytesRead = in.read(buf); bytesRead >= 0; ) {
-      bytesRead = in.read(buf);
+      bytesRead = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)()->{
+        return(in.read(buf));
+      });
     }
   }
 
@@ -111,17 +119,20 @@ public interface IOUtils {
    * @throws IOException if it could not read requested number of bytes
    * for any reason (including EOF)
    */
-  static void readFully(InputStream in, byte[] buf, int off, int len)
+  static void readFully(InputStream in, byte[] buf, final int off, int len)
       throws IOException {
-    for(int toRead = len; toRead > 0; ) {
-      final int ret = in.read(buf, off, toRead);
-      if (ret < 0) {
-        final int read = len - toRead;
-        throw new EOFException("Premature EOF: read length is " + len + " but encountered EOF at " + read);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      int offset = off;
+      for(int toRead = len; toRead > 0; ) {
+        final int ret = in.read(buf, offset, toRead);
+        if (ret < 0) {
+          final int read = len - toRead;
+          throw new EOFException("Premature EOF: read length is " + len + " but encountered EOF at " + read);
+        }
+        toRead -= ret;
+        offset += ret;
       }
-      toRead -= ret;
-      off += ret;
-    }
+    });
   }
 
   /**
@@ -135,9 +146,12 @@ public interface IOUtils {
    */
   static void writeFully(FileChannel fc, ByteBuffer buf, long offset)
       throws IOException {
-    do {
-      offset += fc.write(buf, offset);
-    } while (buf.remaining() > 0);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      long off = offset;
+      do {
+        off += fc.write(buf, off);
+      } while (buf.remaining() > 0);
+    });
   }
 
   /**
@@ -148,21 +162,23 @@ public interface IOUtils {
    * for any reason (including EOF)
    */
   static void skipFully(InputStream in, long len) throws IOException {
-    long amt = len;
-    while (amt > 0) {
-      long ret = in.skip(amt);
-      if (ret == 0) {
-        // skip may return 0 even if we're not at EOF.  Luckily, we can
-        // use the read() method to figure out if we're at the end.
-        int b = in.read();
-        if (b == -1) {
-          throw new EOFException( "Premature EOF from inputStream after " +
-              "skipping " + (len - amt) + " byte(s).");
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      long amt = len;
+      while (amt > 0) {
+        long ret = in.skip(amt);
+        if (ret == 0) {
+          // skip may return 0 even if we're not at EOF.  Luckily, we can
+          // use the read() method to figure out if we're at the end.
+          int b = in.read();
+          if (b == -1) {
+            throw new EOFException( "Premature EOF from inputStream after " +
+                "skipping " + (len - amt) + " byte(s).");
+          }
+          ret = 1;
         }
-        ret = 1;
+        amt -= ret;
       }
-      amt -= ret;
-    }
+    });
   }
 
   /**
@@ -188,7 +204,9 @@ public interface IOUtils {
 
   /** Serialize the given object to a byte array using {@link java.io.ObjectOutputStream#writeObject(Object)}. */
   static byte[] object2Bytes(Object obj) {
-    return ProtoUtils.writeObject2ByteString(obj).toByteArray();
+    return (Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<byte[]>)()->{
+      return(ProtoUtils.writeObject2ByteString(obj).toByteArray());
+    }));
   }
 
   static <T> T bytes2Object(byte[] bytes, Class<T> clazz) {
@@ -197,8 +215,10 @@ public interface IOUtils {
 
   static <T> T readObject(InputStream in, Class<T> clazz) {
     try(ObjectInputStream oin = new ObjectInputStream(in)) {
-      return clazz.cast(oin.readObject());
-    } catch (IOException | ClassNotFoundException e) {
+      return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<T>)()->{
+        return clazz.cast(oin.readObject());
+      }));
+    } catch (IOException | FailsafeException e) {
       throw new IllegalStateException("Failed to read an object.", e);
     } catch (ClassCastException e) {
       throw new IllegalStateException("Failed to cast the object to " + clazz, e);
